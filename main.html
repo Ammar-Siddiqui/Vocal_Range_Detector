@@ -1,0 +1,536 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vocal Range Finder — MVP</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #121821;
+      --ink: #e8f0ff;
+      --muted: #8aa0b7;
+      --accent: #6aa6ff;
+      --good: #70d091;
+      --bad: #ff8a8a;
+      --warn: #ffb86b;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color: var(--ink); background: radial-gradient(1200px 800px at 30% -10%, #1a2740, #0b0f14);
+      display: grid; place-items: center; padding: 24px;
+    }
+    .app { width: min(1100px, 96vw); }
+    .card {
+      background: linear-gradient(180deg, #0f1622 0%, #0e141d 100%);
+      border: 1px solid #1e2a3b; border-radius: 18px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: 0.2px; color: #cfe0ff; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; }
+    button {
+      background: #172133; color: var(--ink); border: 1px solid #283751; border-radius: 12px; padding: 10px 14px; cursor: pointer;
+      font-weight: 600; letter-spacing: .2px; transition: 120ms ease background, 120ms ease transform, 120ms ease opacity;
+    }
+    button:hover { background: #1b2841; }
+    button:active { transform: translateY(1px); }
+    button[disabled] { opacity: 0.6; cursor: not-allowed; }
+    .danger { border-color: #50313a; background: #2b1720; }
+    .danger:hover { background: #3a1d29; }
+
+    .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; margin-top: 16px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+    .panel { background: var(--card); border: 1px solid #1d2838; border-radius: 16px; padding: 16px; }
+    .live { display: grid; gap: 12px; }
+    .live .big { font-size: clamp(38px, 5.6vw, 64px); font-weight: 800; letter-spacing: 0.6px; }
+    .sub { color: var(--muted); font-size: 14px; }
+
+    .barWrap { height: 14px; border-radius: 999px; background: #0c1320; border: 1px solid #1a2940; overflow: hidden; }
+    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #547cff, #67e3a1); transition: width 120ms ease; }
+
+    .rangeRow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .pill { padding: 6px 10px; border-radius: 999px; border: 1px solid #2a3a54; background: #0f1726; font-weight: 700; }
+
+    .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .kv div { background: #0d1422; border: 1px dashed #22304a; border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color: #b8c7da; }
+
+    .sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .sliders label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+    input[type="range"] { width: 100%; }
+
+    footer { margin-top: 14px; color: #88a1bd; font-size: 12px; text-align: center; opacity: 0.9; }
+    .note { color: #bcd1ff; }
+
+    .banner { margin-top: 12px; background: #2a1f0a; border: 1px solid #5e4a1f; color: #ffd79c; padding: 10px 12px; border-radius: 10px; display:none; }
+    .ok { color: var(--good); }
+    .warn { color: var(--warn); }
+    .err  { color: var(--bad); }
+
+    .tests { margin-top: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color: #b8c7da; background: #0d1422; border: 1px dashed #22304a; border-radius: 10px; padding: 10px; max-height: 180px; overflow:auto; }
+    .tests b.pass { color: var(--good); }
+    .tests b.fail { color: var(--bad); }
+  </style>
+</head>
+<body>
+  <div class="app card">
+    <header>
+      <h1>Vocal Range Finder — MVP</h1>
+      <div class="controls">
+        <button id="startBtn">Start Microphone</button>
+        <button id="stopBtn" class="danger">Stop</button>
+        <button id="resetBtn">Reset</button>
+        <button id="runTestsBtn" title="Run unit tests that don't require a mic">Run Tests</button>
+      </div>
+    </header>
+
+    <div id="secureBanner" class="banner"></div>
+
+    <div class="grid">
+      <section class="panel live">
+        <div class="big" id="liveNote">—</div>
+        <div class="sub" id="liveHz">0.00 Hz</div>
+        <div class="barWrap" aria-hidden="true"><div class="bar" id="noteBar"></div></div>
+
+        <div class="rangeRow">
+          <span class="sub">Range:</span>
+          <span class="pill" id="lowNote">—</span>
+          <span class="sub">to</span>
+          <span class="pill" id="highNote">—</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="sliders">
+          <label>Sensitivity (gate RMS)
+            <input id="sensitivity" type="range" min="0.003" max="0.05" step="0.001" value="0.010">
+          </label>
+          <label>Sustain (ms to register)
+            <input id="sustain" type="range" min="150" max="600" step="10" value="300">
+          </label>
+        </div>
+        <div class="kv" style="margin-top:12px">
+          <div id="status">status: idle</div>
+          <div id="meta">sampleRate: —</div>
+        </div>
+        <div class="kv" style="margin-top:8px">
+          <div id="perm">permission: unknown</div>
+          <div id="env">env: checking…</div>
+        </div>
+        <div class="tests" id="testsLog" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <footer>
+      Allow microphone access, then <span class="note">sing a steady vowel (e.g., “ah”)</span>. We’ll detect your pitch, map it to a note, and track your lowest/highest sustained notes.
+    </footer>
+  </div>
+
+  <script>
+  // ===== Utility: note mapping =====
+  const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const A4 = 440;
+  function freqToMidi(freq){ return Math.round(69 + 12 * Math.log2(freq / A4)); }
+  function midiToName(midi){
+    const n = ((midi % 12) + 12) % 12;
+    const octave = Math.floor(midi / 12) - 1;
+    return `${NOTE_NAMES[n]}${octave}`;
+  }
+
+  // ===== DOM =====
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn  = document.getElementById('stopBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const runTestsBtn = document.getElementById('runTestsBtn');
+  const liveNoteEl = document.getElementById('liveNote');
+  const liveHzEl   = document.getElementById('liveHz');
+  const noteBarEl  = document.getElementById('noteBar');
+  const lowNoteEl  = document.getElementById('lowNote');
+  const highNoteEl = document.getElementById('highNote');
+  const statusEl   = document.getElementById('status');
+  const metaEl     = document.getElementById('meta');
+  const permEl     = document.getElementById('perm');
+  const envEl      = document.getElementById('env');
+  const secureBanner = document.getElementById('secureBanner');
+  const sensitivityEl = document.getElementById('sensitivity');
+  const sustainEl     = document.getElementById('sustain');
+
+  // ===== Audio state =====
+  let audioCtx = null;
+  let analyser = null;
+  let micStream = null;
+  let dataBuf = null; // Float32Array reused
+  let rafId = null;
+
+  // Pitch estimation state
+  const minFreq = 60;   // Hz
+  const maxFreq = 1200; // Hz
+
+  const recentHz = []; // small median filter
+  const RECENT_N = 5;
+
+  let candidateMidi = null;
+  let candidateSince = 0;
+  let stableMidi = null; // last registered sustained note
+  let lowMidi = null;
+  let highMidi = null;
+
+  // ====== Control handlers ======
+  startBtn.addEventListener('click', start, { passive: true });
+  stopBtn.addEventListener('click', stop, { passive: true });
+  resetBtn.addEventListener('click', reset, { passive: true });
+  runTestsBtn.addEventListener('click', runUnitTests, { passive: true });
+
+  function setStatus(txt){ statusEl.textContent = `status: ${txt}`; }
+  function logTest(line){ const el = document.getElementById('testsLog'); el.innerHTML += line + "\n"; el.scrollTop = el.scrollHeight; }
+
+  // ===== Environment & Permission Preflight =====
+  function isLocalhost(){
+    return /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname);
+  }
+  function secureOK(){
+    return window.isSecureContext || isLocalhost();
+  }
+  async function checkPermissions(){
+    try {
+      if (!navigator.permissions || !navigator.permissions.query){ permEl.textContent = 'permission: unknown (Permissions API unsupported)'; return; }
+      const status = await navigator.permissions.query({ name: 'microphone' });
+      permEl.textContent = `permission: ${status.state}`;
+      status.onchange = () => { permEl.textContent = `permission: ${status.state}`; };
+    } catch (e){
+      permEl.textContent = 'permission: unknown (query failed)';
+    }
+  }
+  function updateEnvBanner(){
+    const ok = secureOK();
+    if (!ok){
+      secureBanner.style.display = 'block';
+      secureBanner.innerHTML = `\u26A0\uFE0F Microphone access requires <b>HTTPS</b> or <b>http://localhost</b>.\n      You are on <code>${location.protocol}//${location.host}</code>.\n      Run a local server (e.g. <code>python -m http.server</code>) or use an HTTPS host, then reload.`;
+      startBtn.disabled = true;
+    } else {
+      secureBanner.style.display = 'none';
+      startBtn.disabled = false;
+    }
+    envEl.textContent = `env: ${window.isSecureContext ? 'secure' : 'insecure'}; host=${location.host || 'file://'}; getUserMedia=${!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)}`;
+  }
+
+  // Run preflight immediately
+  updateEnvBanner();
+  checkPermissions();
+
+  async function start(){
+    // Hard gate: only attempt in a secure context and within a user gesture (this handler)
+    if (!secureOK()){
+      setStatus('blocked: insecure context (use HTTPS or localhost)');
+      updateEnvBanner();
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus('error: getUserMedia not supported in this browser');
+      return;
+    }
+    try {
+      if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+      if (!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+      // Request mic in response to this click (user gesture)
+      const constraints = {
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1
+        },
+        video: false
+      };
+
+      // This call will prompt the user if permission is not yet granted
+      micStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const src = audioCtx.createMediaStreamSource(micStream);
+
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 4096; // big enough for voice fundamentals
+      analyser.smoothingTimeConstant = 0.0;
+      src.connect(analyser);
+
+      dataBuf = new Float32Array(analyser.fftSize);
+      metaEl.textContent = `sampleRate: ${audioCtx.sampleRate.toFixed(0)} Hz`;
+
+      setStatus('listening');
+      loop();
+    } catch (err){
+      const friendly = explainGetUserMediaError(err);
+      console.error('getUserMedia error:', err);
+      setStatus(`error: ${friendly}`);
+      // surface banner for common deny case
+      secureBanner.style.display = 'block';
+      secureBanner.innerHTML = `\u26A0\uFE0F ${friendly}<br>\n        If you denied access, click the mic/camera icon in your browser's address bar to <b>Allow</b> the microphone, then reload.`;
+    }
+  }
+
+  function explainGetUserMediaError(err){
+    const name = err && (err.name || err.code || 'Error');
+    switch (name){
+      case 'NotAllowedError':
+      case 'PermissionDeniedError':
+        return 'Microphone permission denied or blocked.';
+      case 'NotFoundError':
+      case 'DevicesNotFoundError':
+        return 'No microphone found. Plug one in or enable it in OS settings.';
+      case 'NotReadableError':
+      case 'TrackStartError':
+        return 'Microphone is already in use by another app or not readable.';
+      case 'OverconstrainedError':
+      case 'ConstraintNotSatisfiedError':
+        return 'Requested audio constraints cannot be satisfied by your device.';
+      case 'SecurityError':
+        return 'Access blocked by the browser (serve over HTTPS or localhost).';
+      case 'AbortError':
+        return 'Microphone request was aborted. Try again.';
+      case 'TypeError':
+        return 'Invalid constraints (internal error).';
+      default:
+        return name + (err.message ? ` — ${err.message}` : '');
+    }
+  }
+
+  function stop(){
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    if (micStream){
+      micStream.getTracks().forEach(t => t.stop());
+      micStream = null;
+    }
+    if (audioCtx){ audioCtx.suspend(); }
+    setStatus('stopped');
+  }
+
+  function reset(){
+    candidateMidi = null; candidateSince = 0; stableMidi = null; lowMidi = null; highMidi = null;
+    recentHz.length = 0;
+    liveNoteEl.textContent = '—';
+    liveHzEl.textContent = '0.00 Hz';
+    lowNoteEl.textContent = '—';
+    highNoteEl.textContent = '—';
+    noteBarEl.style.width = '0%';
+  }
+
+  // ===== Pitch detection (YIN-inspired) =====
+  // Returns frequency in Hz or null
+  function detectPitchYIN(buf, sampleRate){
+    const N = buf.length;
+    // Energy gate
+    let rms = 0;
+    for (let i = 0; i < N; i++){ const v = buf[i]; rms += v*v; }
+    rms = Math.sqrt(rms / N);
+    const gate = parseFloat(sensitivityEl.value); // UI control
+    if (rms < gate) return null;
+
+    const minLag = Math.floor(sampleRate / maxFreq);
+    const maxLag = Math.floor(sampleRate / minFreq);
+    const maxTau = Math.min(maxLag, N - 1);
+
+    // Difference function d(tau)
+    if (!detectPitchYIN._d || detectPitchYIN._d.length < maxTau + 1){
+      detectPitchYIN._d = new Float32Array(maxTau + 1);
+      detectPitchYIN._cmnd = new Float32Array(maxTau + 1);
+    }
+    const d = detectPitchYIN._d;
+    const cmnd = detectPitchYIN._cmnd;
+
+    for (let tau = 0; tau <= maxTau; tau++) d[tau] = 0;
+
+    for (let tau = 1; tau <= maxTau; tau++){
+      let sum = 0;
+      for (let i = 0; i + tau < N; i++){
+        const diff = buf[i] - buf[i + tau];
+        sum += diff * diff;
+      }
+      d[tau] = sum;
+    }
+
+    // Cumulative mean normalized difference
+    cmnd[0] = 1;
+    let cum = 0;
+    for (let tau = 1; tau <= maxTau; tau++){
+      cum += d[tau];
+      cmnd[tau] = d[tau] * tau / (cum || 1e-12);
+    }
+
+    // Absolute threshold
+    const thresh = 0.12; // typical 0.1-0.2
+    let tauCandidate = -1;
+    for (let tau = minLag; tau <= maxTau; tau++){
+      if (cmnd[tau] < thresh){
+        // Local minimum search around tau
+        while (tau + 1 <= maxTau && cmnd[tau + 1] < cmnd[tau]) tau++;
+        tauCandidate = tau;
+        break;
+      }
+    }
+
+    if (tauCandidate === -1){
+      // No threshold crossing: take global minimum in range
+      let bestTau = minLag;
+      for (let tau = minLag + 1; tau <= maxTau; tau++){
+        if (cmnd[tau] < cmnd[bestTau]) bestTau = tau;
+      }
+      tauCandidate = bestTau;
+    }
+
+    // Parabolic interpolation around tauCandidate for sub-sample accuracy
+    const k = tauCandidate;
+    const k0 = Math.max(1, k - 1);
+    const k2 = Math.min(maxTau, k + 1);
+    const s0 = cmnd[k0], s1 = cmnd[k], s2 = cmnd[k2];
+    const denom = (s0 - 2*s1 + s2);
+    let delta = 0;
+    if (Math.abs(denom) > 1e-12){
+      delta = 0.5 * (s0 - s2) / denom; // -1..1
+    }
+    const refined = k + delta;
+    const freq = sampleRate / refined;
+
+    if (freq < minFreq || freq > maxFreq) return null;
+    return freq;
+  }
+
+  // Median of recent non-null values
+  function medianHz(values){
+    const arr = values.filter(v => Number.isFinite(v));
+    if (!arr.length) return null;
+    arr.sort((a,b)=>a-b);
+    const mid = Math.floor(arr.length/2);
+    return arr.length % 2 ? arr[mid] : (arr[mid-1]+arr[mid])/2;
+  }
+
+  // Progress bar maps MIDI range [C1..C7] to 0..100%
+  function barPercentForMidi(midi){
+    const minM = 24; // C1
+    const maxM = 96; // C7
+    const clamped = Math.max(minM, Math.min(maxM, midi));
+    return ((clamped - minM) / (maxM - minM)) * 100;
+  }
+
+  // ===== Main loop =====
+  let lastProcess = 0;
+  function loop(ts){
+    rafId = requestAnimationFrame(loop);
+    if (!analyser) return;
+
+    // Throttle ~ every 50ms
+    if (ts && ts - lastProcess < 50) return; // ~20 FPS
+    lastProcess = ts || performance.now();
+
+    analyser.getFloatTimeDomainData(dataBuf);
+    const hz = detectPitchYIN(dataBuf, audioCtx.sampleRate);
+
+    recentHz.push(hz || NaN);
+    if (recentHz.length > RECENT_N) recentHz.shift();
+    const smoothedHz = medianHz(recentHz);
+
+    if (Number.isFinite(smoothedHz)){
+      const midi = freqToMidi(smoothedHz);
+      const name = midiToName(midi);
+      liveNoteEl.textContent = name;
+      liveHzEl.textContent = `${smoothedHz.toFixed(2)} Hz`;
+      noteBarEl.style.width = `${barPercentForMidi(midi).toFixed(1)}%`;
+
+      // sustain logic
+      const now = performance.now();
+      if (candidateMidi === midi){
+        // held
+        const heldMs = now - candidateSince;
+        const needMs = parseInt(sustainEl.value, 10);
+        if (heldMs >= needMs && stableMidi !== midi){
+          stableMidi = midi;
+          // update range
+          if (lowMidi === null || midi < lowMidi) lowMidi = midi;
+          if (highMidi === null || midi > highMidi) highMidi = midi;
+          lowNoteEl.textContent  = lowMidi !== null ? midiToName(lowMidi) : '—';
+          highNoteEl.textContent = highMidi !== null ? midiToName(highMidi) : '—';
+        }
+      } else {
+        candidateMidi = midi;
+        candidateSince = now;
+      }
+      setStatus('listening');
+    } else {
+      liveNoteEl.textContent = '…';
+      liveHzEl.textContent = 'listening';
+      noteBarEl.style.width = '0%';
+      setStatus('listening (no stable pitch)');
+      // reset candidate so we require sustain again when pitch returns
+      candidateMidi = null;
+    }
+  }
+
+  // Helpful: stop audio when tab is hidden to save battery
+  document.addEventListener('visibilitychange', () => {
+    if (!audioCtx) return;
+    if (document.hidden) { audioCtx.suspend(); setStatus('paused (tab hidden)'); }
+    else if (audioCtx.state === 'suspended') { audioCtx.resume(); setStatus('listening'); }
+  });
+
+  // Safari/WebKit: ensure context is created from a user gesture
+  window.addEventListener('click', () => {
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }, { once: true });
+
+  // ===== Unit tests (no mic required) =====
+  function genSineBuffer(hz, seconds, sampleRate, amplitude=0.5){
+    const N = Math.floor(seconds * sampleRate);
+    const buf = new Float32Array(N);
+    const twoPiF = 2 * Math.PI * hz;
+    for (let i = 0; i < N; i++) buf[i] = amplitude * Math.sin(twoPiF * (i / sampleRate));
+    return buf;
+  }
+
+  function approxEqual(a, b, tol){ return Math.abs(a - b) <= tol; }
+
+  function runUnitTests(){
+    document.getElementById('testsLog').textContent = '';
+    logTest('Running unit tests for pitch detector...');
+    const sr = 44100;
+
+    // Test 1: 440 Hz (A4)
+    const buf440 = genSineBuffer(440, 0.1, sr, 0.8);
+    const backupGate = sensitivityEl.value;
+    sensitivityEl.value = '0.003'; // ensure gate passes for synthetic tests
+    let f1 = detectPitchYIN(buf440, sr);
+    const pass1 = f1 && Math.abs(f1 - 440) < 5; // within ~5 Hz
+    logTest(`Test 1 (A4 440 Hz): detected=${f1 ? f1.toFixed(2) : 'null'} -> <b class="${pass1?'pass':'fail'}">${pass1?'PASS':'FAIL'}</b>`);
+
+    // Test 2: C4 (261.63 Hz)
+    const bufC4 = genSineBuffer(261.63, 0.12, sr, 0.8);
+    let f2 = detectPitchYIN(bufC4, sr);
+    const pass2 = f2 && Math.abs(f2 - 261.63) < 5;
+    logTest(`Test 2 (C4 261.63 Hz): detected=${f2 ? f2.toFixed(2) : 'null'} -> <b class="${pass2?'pass':'fail'}">${pass2?'PASS':'FAIL'}</b>`);
+
+    // Test 3: Low G2 (~98.00 Hz)
+    const bufG2 = genSineBuffer(98.0, 0.18, sr, 0.9);
+    let f3 = detectPitchYIN(bufG2, sr);
+    const pass3 = f3 && Math.abs(f3 - 98.0) < 3;
+    logTest(`Test 3 (G2 98 Hz): detected=${f3 ? f3.toFixed(2) : 'null'} -> <b class="${pass3?'pass':'fail'}">${pass3?'PASS':'FAIL'}</b>`);
+
+    // Test 4: Silence -> null
+    const silence = new Float32Array(4096);
+    let f4 = detectPitchYIN(silence, sr);
+    const pass4 = f4 === null;
+    logTest(`Test 4 (silence): detected=${f4} -> <b class="${pass4?'pass':'fail'}">${pass4?'PASS':'FAIL'}</b>`);
+
+    // Test 5: Note mapping round-trip
+    const midiA4 = freqToMidi(440);
+    const pass5 = midiToName(midiA4).startsWith('A');
+    logTest(`Test 5 (mapping 440 Hz -> MIDI -> name): ${midiA4} -> ${midiToName(midiA4)} -> <b class="${pass5?'pass':'fail'}">${pass5?'PASS':'FAIL'}</b>`);
+
+    sensitivityEl.value = backupGate; // restore
+    logTest('Done.');
+  }
+  </script>
+</body>
+</html>
